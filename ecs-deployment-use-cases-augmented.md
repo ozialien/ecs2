@@ -107,8 +107,14 @@
 - Log subscription filters (for log aggregation/analysis)
 
 **Stage 7 - Container Insights**:
-- CloudFormation/CDK: `container-insights.yaml` / `container-insights.ts`
-- Container Insights enabled on cluster
+- Container Insights enabled as cluster setting (not separate infrastructure)
+- AWS CLI command: `aws ecs update-cluster-settings --cluster cluster-name --settings name=containerInsights,value=enabled`
+- CloudFormation/CDK: Cluster setting in `ecs-cluster.yaml` / `ecs-cluster.ts`:
+  ```yaml
+  ClusterSettings:
+    - Name: containerInsights
+      Value: enabled
+  ```
 - CloudWatch Logs group for Container Insights: `/aws/ecs/containerinsights/cluster-name/performance`
 - Container Insights metrics namespace: `ECS/ContainerInsights`
 - Performance metrics collection enabled
@@ -572,12 +578,12 @@
 - Registered task definition in ECS
 - Task definition validation
 - Resource requirements validated (CPU, memory)
-- Health check configuration:
-  - Command: Health check command or HTTP endpoint
-  - Interval: 30 seconds (default, configurable)
-  - Timeout: 5 seconds (default, configurable)
-  - Retries: 3 (default, configurable)
-  - Start period: 0-300 seconds (grace period for container startup)
+- Health check configuration (JSON format):
+  - `command`: Health check command or HTTP endpoint
+  - `interval`: 30 seconds (default, configurable)
+  - `timeout`: 5 seconds (default, configurable)
+  - `retries`: 3 (default, configurable)
+  - `startPeriod`: 0-300 seconds (grace period for container startup, camelCase in JSON)
 
 **Stage 11 - Dev Deployment**:
 - ECS service updated in dev
@@ -638,7 +644,7 @@
 - Deployment circuit breaker enabled:
   - Enable: `true`
   - Rollback: `true` (automatic rollback on deployment failure)
-  - Failure threshold: Number of failed tasks before rollback (e.g., 5)
+  - Note: Circuit breaker triggers based on service health check failures during deployment, automatically rolling back if deployment fails
 - Blue/green or rolling deployment strategy applied
 
 **Stage 19 - Deployment Validation**:
@@ -765,7 +771,7 @@
 - Task definition validation
 
 **Stage 10 - Manual Service Deployment**:
-- AWS CLI command executed: `aws ecs update-service --task-definition family:revision`
+- AWS CLI command executed: `aws ecs update-service --cluster cluster-name --service service-name --task-definition family:revision`
 - Service update initiated
 - Service deployment ID
 - Service update status
@@ -870,7 +876,7 @@
 - Image availability confirmed
 
 **Stage 5 - Rollback Execution**:
-- AWS CLI command: `aws ecs update-service --task-definition family:previous-revision`
+- AWS CLI command: `aws ecs update-service --cluster cluster-name --service service-name --task-definition family:previous-revision`
 - Service update initiated
 - Rollback deployment ID
 - Service deployment status
@@ -975,7 +981,7 @@
 - Cost baseline
 
 **Stage 3 - Service Configuration Update**:
-- AWS CLI command: `aws ecs update-service --desired-count X --deployment-configuration ...`
+- AWS CLI command: `aws ecs update-service --cluster cluster-name --service service-name --desired-count X --deployment-configuration maximumPercent=200,minimumHealthyPercent=100`
 - Updated service configuration
 - Service ARN: `arn:aws:ecs:region:account:service/cluster/service`
 - Configuration change parameters:
@@ -1114,7 +1120,7 @@
 - Business metrics validated
 
 **Stage 9 - Blue Service Termination**:
-- Blue service deleted: `aws ecs delete-service --service service-blue`
+- Blue service deleted: `aws ecs delete-service --cluster cluster-name --service service-blue`
 - Blue service cleanup
 - Resource cleanup confirmation
 - Blue target group removed (if separate)
@@ -1171,19 +1177,19 @@
 - Risk assessment
 
 **Stage 2 - Rolling Deployment Configuration**:
-- Deployment configuration:
-  - maximumPercent: 200% (allows 2x tasks during deployment)
-  - minimumHealthyPercent: 50% (maintains 50% capacity)
+- Deployment configuration (JSON format uses camelCase):
+  - `maximumPercent`: 200% (allows 2x tasks during deployment)
+  - `minimumHealthyPercent`: 50% (maintains 50% capacity)
 - Deployment circuit breaker enabled:
   - Enable: `true`
   - Rollback: `true` (automatic rollback on deployment failure)
-  - Failure threshold: Number of failed tasks before rollback (e.g., 5)
+  - Note: Circuit breaker triggers based on service health check failures during deployment, automatically rolling back if deployment fails
 - Task replacement strategy
 - Health check grace period
 - Deployment timeout
 
 **Stage 3 - Rolling Update Initiation**:
-- ECS service update: `aws ecs update-service --task-definition family:new-revision`
+- ECS service update: `aws ecs update-service --cluster cluster-name --service service-name --task-definition family:new-revision`
 - Service deployment ID
 - Rolling update started
 - Old tasks begin draining
@@ -1653,6 +1659,7 @@
 
 **Stage 3 - Container Connection**:
 - AWS CLI command: `aws ecs execute-command --cluster cluster-name --task task-id --container container-name --interactive --command "/bin/sh"`
+  - Note: `--command` parameter is optional; if omitted, uses container's default entrypoint
 - ECS Exec session established
 - Interactive shell access to container
 - Connection confirmation
@@ -1863,6 +1870,7 @@ Start Deployment
 
 ## Document Version History
 
+- **v2.2 (Validated)**: Fixed deployment circuit breaker configuration, corrected AWS CLI commands, clarified Container Insights as cluster setting, added JSON format clarifications
 - **v2.1 (Enhanced)**: Added Container Insights, Deployment Circuit Breaker, ECS Exec debugging, enhanced health check configurations
 - **v2.0 (Augmented)**: Enhanced with ECR deep integration, additional use cases (rolling, canary, batch jobs, auto-scaling, multi-region), improved artifacts, and best practices alignment
 - **v1.0 (Original)**: Initial comprehensive use cases document

@@ -1,0 +1,26 @@
+{
+  "name": "ecs-use-case-18-ecs-exec",
+  "version": "1.0.0",
+  "description": "CDK stack for ECS Exec (Use Case 18)",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "destroy": "cdk destroy"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "~5.0.0",
+    "ts-node": "^10.9.0"
+  }
+}
+

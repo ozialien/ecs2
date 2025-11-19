@@ -1,0 +1,42 @@
+---
+# Use Case 18: ECS Exec - Ansible Playbook
+
+- name: Enable ECS Exec
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    enable_exec: "{{ enable_exec | default(true) }}"
+
+  tasks:
+    - name: Enable ECS Exec on Service
+      shell: |
+        aws ecs update-service \
+          --cluster "{{ cluster_name }}" \
+          --service "{{ service_name }}" \
+          {% if enable_exec %}--enable-execute-command{% else %}--no-enable-execute-command{% endif %} \
+          --region "{{ aws_region }}"
+      register: service_update
+      changed_when: true
+
+    - name: Wait for Service Update
+      community.aws.ecs_service:
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        region: "{{ aws_region }}"
+      register: service_status
+      until: service_status.service.status == 'ACTIVE'
+      retries: 10
+      delay: 5
+
+    - name: Display ECS Exec Info
+      debug:
+        msg:
+          - "ECS Exec {{ 'enabled' if enable_exec else 'disabled' }} on {{ service_name }}"
+          - "To connect: aws ecs execute-command --cluster {{ cluster_name }} --task <task-id> --container <container-name> --interactive"
+          - "Note: Task execution role must have SSM permissions (see prerequisites)"
+

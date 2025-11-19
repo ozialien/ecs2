@@ -1,0 +1,95 @@
+---
+# Use Case 19: Multi-Container Task Definition - Ansible Playbook
+
+- name: Deploy Multi-Container Task Definition
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    main_container_image: "{{ main_container_image }}"
+    sidecar_containers: "{{ sidecar_containers | default([]) }}"
+    cpu: "{{ cpu | default('512') }}"
+    memory: "{{ memory | default('1024') }}"
+    task_execution_role_arn: "{{ task_execution_role_arn }}"
+    task_role_arn: "{{ task_role_arn }}"
+
+  tasks:
+    - name: Build Container Definitions
+      set_fact:
+        container_definitions:
+          - name: "{{ service_name }}"
+            image: "{{ main_container_image }}"
+            essential: true
+            portMappings:
+              - containerPort: 80
+                protocol: tcp
+            logConfiguration:
+              logDriver: awslogs
+              options:
+                awslogs-group: "/ecs/{{ service_name }}"
+                awslogs-region: "{{ aws_region }}"
+                awslogs-stream-prefix: main
+      loop: "{{ sidecar_containers }}"
+      when: sidecar_containers | length > 0
+
+    - name: Add Sidecar Containers
+      set_fact:
+        container_definitions: "{{ container_definitions | default([]) + [item] }}"
+      loop: "{{ sidecar_containers }}"
+      vars:
+        item:
+          name: "{{ item.name }}"
+          image: "{{ item.image }}"
+          essential: "{{ item.essential | default(false) }}"
+          dependsOn: "{{ item.dependsOn | default([]) }}"
+          logConfiguration:
+            logDriver: awslogs
+            options:
+              awslogs-group: "/ecs/{{ service_name }}"
+              awslogs-region: "{{ aws_region }}"
+              awslogs-stream-prefix: "{{ item.name }}"
+
+    - name: Register Multi-Container Task Definition
+      community.aws.ecs_taskdefinition:
+        family: "{{ service_name }}-multi-container"
+        network_mode: awsvpc
+        requires_compatibilities:
+          - FARGATE
+        cpu: "{{ cpu }}"
+        memory: "{{ memory }}"
+        execution_role_arn: "{{ task_execution_role_arn }}"
+        task_role_arn: "{{ task_role_arn }}"
+        container_definitions: "{{ container_definitions }}"
+        region: "{{ aws_region }}"
+      register: task_definition
+
+    - name: Create or Update ECS Service
+      community.aws.ecs_service:
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        task_definition: "{{ task_definition.taskDefinition.taskDefinitionArn }}"
+        desired_count: 2
+        launch_type: FARGATE
+        network_configuration:
+          awsvpc_configuration:
+            subnets: "{{ subnets }}"
+            security_groups: "{{ security_groups }}"
+            assign_public_ip: true
+        deployment_circuit_breaker:
+          enable: true
+          rollback: true
+        region: "{{ aws_region }}"
+      register: ecs_service
+
+    - name: Display Multi-Container Info
+      debug:
+        msg:
+          - "Multi-container task definition deployed"
+          - "Task Definition ARN: {{ task_definition.taskDefinition.taskDefinitionArn }}"
+          - "Service ARN: {{ ecs_service.service.serviceArn }}"
+          - "Containers: {{ container_definitions | map(attribute='name') | list }}"
+

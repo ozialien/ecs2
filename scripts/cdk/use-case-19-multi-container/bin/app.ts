@@ -13,7 +13,7 @@ const account = app.node.tryGetContext('account') || process.env.CDK_DEFAULT_ACC
 
 const uniqueId = app.node.tryGetContext('uniqueId');
 const baseStackName = `${projectName}-19-multi-container-${environment}`;
-const stackName = app.node.tryGetContext('''stackName''') || (uniqueId ? `${baseStackName}-${uniqueId}` : baseStackName);
+const stackName = app.node.tryGetContext(''stackName'') || (uniqueId ? `${baseStackName}-${uniqueId}` : baseStackName);
 
 if (!account) {
   throw new Error('Account ID must be provided');

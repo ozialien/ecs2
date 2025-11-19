@@ -13,7 +13,7 @@
 
 ---
 
-## Pre Use Case 1: Infrastructure Provisioning (CaI)
+## Use Case 1: Infrastructure Provisioning (CaI)
 
 ```
 ┌─────────────┐
@@ -167,7 +167,7 @@
 
 ---
 
-## Pre Use Case 2: ECR Repository Setup (CaI) - Enhanced
+## Use Case 2: ECR Repository Setup (CaI) - Enhanced
 
 ```
 ┌─────────────┐
@@ -298,7 +298,7 @@
 
 ---
 
-## Pre Use Case 3: CI/CD Infrastructure Setup (CaI) - Enhanced
+## Use Case 3: CI/CD Infrastructure Setup (CaI) - Enhanced
 
 ```
 ┌─────────────┐
@@ -423,19 +423,19 @@
 
 ---
 
-## Pre Use Case 4: Security Approval for API Scanning (CaI)
+## Use Case 4: Security Approval for API Scanning (CaI)
 
 *(Same as original - already comprehensive)*
 
 ---
 
-## Pre Use Case 5: Security Approval for Cloud Scanning (CaI)
+## Use Case 5: Security Approval for Cloud Scanning (CaI)
 
 *(Same as original - already comprehensive)*
 
 ---
 
-## Use Case 1: Normal Deployment (CI/CD) - Enhanced
+## Use Case 6: Normal Deployment (CI/CD) - Enhanced
 
 ```
 ┌─────────────┐
@@ -638,7 +638,7 @@
 
 ---
 
-## Use Case 2: Emergency Hotfix (Manual) - Enhanced
+## Use Case 7: Emergency Hotfix (Manual) - Enhanced
 
 ```
 ┌─────────────┐
@@ -780,7 +780,7 @@
 
 ---
 
-## Use Case 3: Rollback - Enhanced
+## Use Case 8: Rollback - Enhanced
 
 ```
 ┌─────────────┐
@@ -907,7 +907,7 @@
 
 ---
 
-## Use Case 4: Configuration Change - Enhanced
+## Use Case 9: Configuration Change - Enhanced
 
 ```
 ┌─────────────┐
@@ -995,13 +995,13 @@
 
 ---
 
-## Use Case 5: Additional Infrastructure Request - Enhanced
+## Use Case 10: Additional Infrastructure Request - Enhanced
 
 *(Same structure as original, but with enhanced artifacts)*
 
 ---
 
-## Use Case 6: Blue/Green Deployment - Enhanced
+## Use Case 11: Blue/Green Deployment - Enhanced
 
 ```
 ┌─────────────┐
@@ -1106,13 +1106,13 @@
 
 ---
 
-## Use Case 7: Scheduled Scan Deployment
+## Use Case 12: Scheduled Scan Deployment
 
 *(Same as original - already comprehensive)*
 
 ---
 
-## NEW Use Case 8: Rolling Deployment
+## Use Case 13: Rolling Deployment
 
 ```
 ┌─────────────┐
@@ -1194,7 +1194,7 @@
 
 ---
 
-## NEW Use Case 9: Canary Deployment
+## Use Case 14: Canary Deployment
 
 ```
 ┌─────────────┐
@@ -1287,7 +1287,7 @@
 
 ---
 
-## NEW Use Case 10: Batch Job Deployment
+## Use Case 15: Batch Job Deployment
 
 ```
 ┌─────────────┐
@@ -1393,7 +1393,7 @@
 
 ---
 
-## NEW Use Case 11: Auto-Scaling Event
+## Use Case 16: Auto-Scaling Event
 
 ```
 ┌─────────────┐
@@ -1495,7 +1495,7 @@
 
 ---
 
-## NEW Use Case 12: Multi-Region Deployment
+## Use Case 17: Multi-Region Deployment
 
 ```
 ┌─────────────┐

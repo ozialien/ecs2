@@ -1,0 +1,87 @@
+---
+# Use Case 6: Normal Deployment - Ansible Playbook
+
+- name: Deploy ECS Service
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    task_definition_family: "{{ task_definition_family | default(project_name) }}"
+    container_image: "{{ container_image }}"
+    container_port: "{{ container_port | default(80) }}"
+    cpu: "{{ cpu | default('256') }}"
+    memory: "{{ memory | default('512') }}"
+    desired_count: "{{ desired_count | default(2) }}"
+    enable_circuit_breaker: "{{ enable_circuit_breaker | default(true) }}"
+    task_execution_role_arn: "{{ task_execution_role_arn }}"
+    task_role_arn: "{{ task_role_arn }}"
+
+  tasks:
+    - name: Register Task Definition
+      community.aws.ecs_taskdefinition:
+        family: "{{ task_definition_family }}"
+        network_mode: awsvpc
+        requires_compatibilities:
+          - FARGATE
+        cpu: "{{ cpu }}"
+        memory: "{{ memory }}"
+        execution_role_arn: "{{ task_execution_role_arn }}"
+        task_role_arn: "{{ task_role_arn }}"
+        container_definitions:
+          - name: "{{ service_name }}"
+            image: "{{ container_image }}"
+            essential: true
+            portMappings:
+              - containerPort: "{{ container_port }}"
+                protocol: tcp
+            logConfiguration:
+              logDriver: awslogs
+              options:
+                awslogs-group: "/ecs/{{ task_definition_family }}"
+                awslogs-region: "{{ aws_region }}"
+                awslogs-stream-prefix: ecs
+            healthCheck:
+              command:
+                - CMD-SHELL
+                - "curl -f http://localhost:{{ container_port }}/health || exit 1"
+              interval: 30
+              timeout: 5
+              retries: 3
+              startPeriod: 60
+        region: "{{ aws_region }}"
+      register: task_definition
+
+    - name: Create or Update ECS Service
+      community.aws.ecs_service:
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        task_definition: "{{ task_definition.taskDefinition.taskDefinitionArn }}"
+        desired_count: "{{ desired_count }}"
+        launch_type: FARGATE
+        network_configuration:
+          awsvpc_configuration:
+            subnets: "{{ subnets | default([]) }}"
+            security_groups: "{{ security_groups | default([]) }}"
+            assign_public_ip: "{{ assign_public_ip | default(true) }}"
+        deployment_configuration:
+          maximum_percent: 200
+          minimum_healthy_percent: 100
+          deployment_circuit_breaker:
+            enable: "{{ enable_circuit_breaker }}"
+            rollback: "{{ enable_circuit_breaker }}"
+        region: "{{ aws_region }}"
+      register: ecs_service
+
+    - name: Display Service Info
+      debug:
+        msg:
+          - "Service Name: {{ ecs_service.service.serviceName }}"
+          - "Service ARN: {{ ecs_service.service.serviceArn }}"
+          - "Task Definition ARN: {{ task_definition.taskDefinition.taskDefinitionArn }}"
+          - "Desired Count: {{ ecs_service.service.desiredCount }}"
+          - "Running Count: {{ ecs_service.service.runningCount }}"
+

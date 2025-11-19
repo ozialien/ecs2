@@ -11,10 +11,11 @@ const environment = app.node.tryGetContext('environment') || 'dev';
 const region = app.node.tryGetContext('region') || process.env.CDK_DEFAULT_REGION || 'us-east-1';
 const account = app.node.tryGetContext('account') || process.env.CDK_DEFAULT_ACCOUNT;
 
-// Generate unique stack name to prevent clashes
-const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '');
-const uniqueId = app.node.tryGetContext('uniqueId') || timestamp;
-const stackName = `${projectName}-01-infrastructure-${environment}-${uniqueId}`;
+// Use fixed stack name for idempotency - can override with context 'stackName' or 'uniqueId'
+// If uniqueId is provided, it's appended (useful for parallel deployments)
+const uniqueId = app.node.tryGetContext('uniqueId');
+const baseStackName = `${projectName}-01-infrastructure-${environment}`;
+const stackName = app.node.tryGetContext('stackName') || (uniqueId ? `${baseStackName}-${uniqueId}` : baseStackName);
 
 // Validate required context
 if (!account) {

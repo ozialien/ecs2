@@ -8,9 +8,8 @@ set -euo pipefail
 PROJECT_NAME="${1:-myapp}"
 ENVIRONMENT="${2:-dev}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
-UNIQUE_ID="${UNIQUE_ID:-${TIMESTAMP}}"
-STACK_NAME="${PROJECT_NAME}-01-infrastructure-${ENVIRONMENT}-${UNIQUE_ID}"
+# Use fixed stack name for idempotency - set STACK_NAME env var to override
+STACK_NAME="${STACK_NAME:-${PROJECT_NAME}-01-infrastructure-${ENVIRONMENT}}"
 
 # Template file
 TEMPLATE_FILE="template.yaml"
@@ -60,46 +59,39 @@ validate_template() {
     log_info "Template validation successful"
 }
 
-# Create or update stack
+# Deploy stack (idempotent - uses deploy command which handles create/update automatically)
 deploy_stack() {
-    local action=$1
-    
-    log_info "Deploying stack: ${STACK_NAME}"
+    log_info "Deploying stack: ${STACK_NAME} (idempotent - will create or update as needed)"
     
     if [ -f "${PARAMETERS_FILE}" ]; then
-        aws cloudformation ${action}-stack \
+        aws cloudformation deploy \
             --stack-name "${STACK_NAME}" \
-            --template-body file://"${TEMPLATE_FILE}" \
-            --parameters file://"${PARAMETERS_FILE}" \
+            --template-file "${TEMPLATE_FILE}" \
+            --parameter-overrides file://"${PARAMETERS_FILE}" \
             --capabilities CAPABILITY_NAMED_IAM \
             --region "${AWS_REGION}" \
             --tags \
-                Key=Project,Value="${PROJECT_NAME}" \
-                Key=Environment,Value="${ENVIRONMENT}" \
-                Key=UseCase,Value=01-infrastructure \
-                Key=ManagedBy,Value=Script
+                Project="${PROJECT_NAME}" \
+                Environment="${ENVIRONMENT}" \
+                UseCase=01-infrastructure \
+                ManagedBy=Script
     else
-        aws cloudformation ${action}-stack \
+        aws cloudformation deploy \
             --stack-name "${STACK_NAME}" \
-            --template-body file://"${TEMPLATE_FILE}" \
-            --parameters \
-                ParameterKey=ProjectName,ParameterValue="${PROJECT_NAME}" \
-                ParameterKey=Environment,ParameterValue="${ENVIRONMENT}" \
+            --template-file "${TEMPLATE_FILE}" \
+            --parameter-overrides \
+                ProjectName="${PROJECT_NAME}" \
+                Environment="${ENVIRONMENT}" \
             --capabilities CAPABILITY_NAMED_IAM \
             --region "${AWS_REGION}" \
             --tags \
-                Key=Project,Value="${PROJECT_NAME}" \
-                Key=Environment,Value="${ENVIRONMENT}" \
-                Key=UseCase,Value=01-infrastructure \
-                Key=ManagedBy,Value=Script
+                Project="${PROJECT_NAME}" \
+                Environment="${ENVIRONMENT}" \
+                UseCase=01-infrastructure \
+                ManagedBy=Script
     fi
     
-    log_info "Waiting for stack ${action} to complete..."
-    aws cloudformation wait stack-${action}-complete \
-        --stack-name "${STACK_NAME}" \
-        --region "${AWS_REGION}"
-    
-    log_info "Stack ${action} completed successfully"
+    log_info "Stack deployment completed successfully"
 }
 
 # Main execution
@@ -111,14 +103,8 @@ main() {
     # Validate template
     validate_template
     
-    # Check if stack exists
-    if stack_exists; then
-        log_warn "Stack ${STACK_NAME} already exists, updating..."
-        deploy_stack "update"
-    else
-        log_info "Stack ${STACK_NAME} does not exist, creating..."
-        deploy_stack "create"
-    fi
+    # Deploy stack (idempotent - deploy command handles create/update automatically)
+    deploy_stack
     
     # Get outputs
     log_info "Stack outputs:"

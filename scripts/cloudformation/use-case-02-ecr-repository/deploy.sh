@@ -5,10 +5,10 @@ set -euo pipefail
 
 PROJECT_NAME="${1:-myapp}"
 ENVIRONMENT="${2:-dev}"
+REPOSITORY_NAME="${3:-${PROJECT_NAME}-repo}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
-UNIQUE_ID="${UNIQUE_ID:-${TIMESTAMP}}"
-STACK_NAME="${PROJECT_NAME}-02-ecr-repository-${ENVIRONMENT}-${UNIQUE_ID}"
+# Use fixed stack name for idempotency - set STACK_NAME env var to override
+STACK_NAME="${STACK_NAME:-${PROJECT_NAME}-02-ecr-repository-${REPOSITORY_NAME}-${ENVIRONMENT}}"
 
 TEMPLATE_FILE="template.yaml"
 PARAMETERS_FILE="parameters-${ENVIRONMENT}.json"
@@ -30,40 +30,37 @@ validate_template() {
 }
 
 deploy_stack() {
-    local action=$1
-    log_info "${action^}ing stack: ${STACK_NAME}"
+    log_info "Deploying stack: ${STACK_NAME} (idempotent - will create or update as needed)"
     
     if [ -f "${PARAMETERS_FILE}" ]; then
-        aws cloudformation ${action}-stack \
+        aws cloudformation deploy \
             --stack-name "${STACK_NAME}" \
-            --template-body file://"${TEMPLATE_FILE}" \
-            --parameters file://"${PARAMETERS_FILE}" \
+            --template-file "${TEMPLATE_FILE}" \
+            --parameter-overrides file://"${PARAMETERS_FILE}" \
             --capabilities CAPABILITY_NAMED_IAM \
             --region "${AWS_REGION}" \
-            --tags Key=Project,Value="${PROJECT_NAME}" Key=Environment,Value="${ENVIRONMENT}" Key=UseCase,Value=02-ecr-repository
+            --tags Project="${PROJECT_NAME}" Environment="${ENVIRONMENT}" UseCase=02-ecr-repository
     else
-        aws cloudformation ${action}-stack \
+        aws cloudformation deploy \
             --stack-name "${STACK_NAME}" \
-            --template-body file://"${TEMPLATE_FILE}" \
-            --parameters ParameterKey=ProjectName,ParameterValue="${PROJECT_NAME}" ParameterKey=Environment,ParameterValue="${ENVIRONMENT}" \
+            --template-file "${TEMPLATE_FILE}" \
+            --parameter-overrides \
+                ProjectName="${PROJECT_NAME}" \
+                Environment="${ENVIRONMENT}" \
+                RepositoryName="${REPOSITORY_NAME}" \
             --capabilities CAPABILITY_NAMED_IAM \
             --region "${AWS_REGION}" \
-            --tags Key=Project,Value="${PROJECT_NAME}" Key=Environment,Value="${ENVIRONMENT}" Key=UseCase,Value=02-ecr-repository
+            --tags Project="${PROJECT_NAME}" Environment="${ENVIRONMENT}" UseCase=02-ecr-repository
     fi
     
-    aws cloudformation wait stack-${action}-complete --stack-name "${STACK_NAME}" --region "${AWS_REGION}"
-    log_info "Stack ${action} completed"
+    log_info "Stack deployment completed"
 }
 
 main() {
     log_info "Deploying ECR repository for ${PROJECT_NAME} in ${ENVIRONMENT}"
     validate_template
     
-    if stack_exists; then
-        deploy_stack "update"
-    else
-        deploy_stack "create"
-    fi
+    deploy_stack
     
     aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${AWS_REGION}" --query 'Stacks[0].Outputs' --output table
 }

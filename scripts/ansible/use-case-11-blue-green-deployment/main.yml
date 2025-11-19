@@ -1,0 +1,85 @@
+---
+# Use Case 11: Blue/Green Deployment - Ansible Playbook
+
+- name: Blue/Green Deployment
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    green_service_name: "{{ service_name }}-green"
+    task_definition_arn: "{{ task_definition_arn }}"
+    target_group_arn: "{{ target_group_arn }}"
+    use_code_deploy: "{{ use_code_deploy | default(false) }}"
+
+  tasks:
+    - name: Create Green Target Group
+      community.aws.elb_target_group:
+        name: "{{ project_name }}-tg-green-{{ environment }}"
+        protocol: http
+        port: 80
+        vpc_id: "{{ vpc_id }}"
+        health_check_protocol: http
+        health_check_path: "/health"
+        region: "{{ aws_region }}"
+      register: green_tg
+      when: not use_code_deploy
+
+    - name: Create Green Service
+      community.aws.ecs_service:
+        name: "{{ green_service_name }}"
+        cluster: "{{ cluster_name }}"
+        task_definition: "{{ task_definition_arn }}"
+        desired_count: "{{ desired_count | default(2) }}"
+        launch_type: FARGATE
+        network_configuration:
+          awsvpc_configuration:
+            subnets: "{{ subnets }}"
+            security_groups: "{{ security_groups }}"
+            assign_public_ip: true
+        load_balancers:
+          - targetGroupArn: "{{ green_tg.target_group.target_group_arn }}"
+            containerName: "{{ service_name }}"
+            containerPort: 80
+        region: "{{ aws_region }}"
+      when: not use_code_deploy
+      register: green_service
+
+    - name: Wait for Green Service to Stabilize
+      community.aws.ecs_service:
+        name: "{{ green_service_name }}"
+        cluster: "{{ cluster_name }}"
+        region: "{{ aws_region }}"
+      register: service_status
+      until: service_status.service.runningCount == service_status.service.desiredCount
+      retries: 30
+      delay: 10
+      when: not use_code_deploy
+
+    - name: Switch Traffic to Green (Manual step - requires ALB listener update)
+      debug:
+        msg:
+          - "Green service created: {{ green_service_name }}"
+          - "Next: Update ALB listener to route traffic to green target group"
+          - "Then: Monitor green service"
+          - "Finally: Delete blue service after validation"
+      when: not use_code_deploy
+
+    - name: Create CodeDeploy Application
+      community.aws.codedeploy_application:
+        name: "{{ project_name }}-app-{{ environment }}"
+        compute_platform: ECS
+        region: "{{ aws_region }}"
+      register: codedeploy_app
+      when: use_code_deploy
+
+    - name: Display Deployment Info
+      debug:
+        msg:
+          - "Deployment Type: {{ 'CodeDeploy' if use_code_deploy else 'Manual' }}"
+          - "Green Service: {{ green_service_name }}"
+          - "Target Group: {{ green_tg.target_group.target_group_arn | default('N/A') }}"
+

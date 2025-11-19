@@ -653,6 +653,11 @@
 - Task health validation
 - Load balancer target health
 - Initial metrics validation
+- Health check failure handling:
+  - If health checks fail: Circuit breaker triggers automatic rollback
+  - Health check failure analysis (logs, metrics, task events)
+  - Health check failure notification (SNS alert)
+  - Pipeline rollback triggered automatically on deployment failure
 
 **Stage 20-21 - Production Monitoring**:
 - CloudWatch metrics
@@ -669,6 +674,10 @@
 - Deployment timestamp
 - Deployment artifacts
 - Rollback plan documented
+- Pipeline rollback configuration:
+  - Automatic rollback on deployment failure (via circuit breaker)
+  - Manual rollback capability in pipeline
+  - Rollback to previous task definition version
 
 ---
 
@@ -896,6 +905,12 @@
 - Performance metrics restored
 - User impact resolved
 - Rollback success confirmed
+- Health check failure analysis (if applicable):
+  - Health check failure logs reviewed
+  - Task events analyzed
+  - Container logs examined
+  - Health check configuration reviewed
+  - Root cause of health check failures identified
 
 **Stage 8 - Development Notification**:
 - Incident notification sent
@@ -1067,13 +1082,23 @@
 - New ECR image tag
 - Change log review
 - Risk assessment
+- Blue/green deployment method selection:
+  - **Option A**: Manual blue/green (Operations manages)
+  - **Option B**: CodeDeploy blue/green (AWS-native automated)
 
 **Stage 2 - Green Service Creation**:
-- New ECS service created: `service-name-green`
-- Service ARN: `arn:aws:ecs:region:account:service/cluster/service-green`
-- Task definition: new version
-- Service configuration
-- Service tags (Environment: green)
+- **Option A - Manual Blue/Green**:
+  - New ECS service created: `service-name-green`
+  - Service ARN: `arn:aws:ecs:region:account:service/cluster/service-green`
+  - Task definition: new version
+  - Service configuration
+  - Service tags (Environment: green)
+- **Option B - CodeDeploy Blue/Green**:
+  - CodeDeploy application created (if not exists)
+  - CodeDeploy deployment group configured
+  - ECS service configured for CodeDeploy integration
+  - CodeDeploy deployment initiated: `aws deploy create-deployment --application-name app --deployment-group-name group --revision ...`
+  - CodeDeploy manages green service creation automatically
 
 **Stage 3 - Green Target Group Configuration**:
 - New target group for green service
@@ -1098,11 +1123,18 @@
 - Ready for traffic switch
 
 **Stage 6 - Traffic Switch**:
-- Load balancer target group updated
-- Traffic routing switched to green (immediate or gradual)
-- Blue service traffic reduced/stopped
-- Traffic switch confirmation
-- Traffic shift monitoring (if gradual)
+- **Option A - Manual Traffic Switch**:
+  - Load balancer target group updated
+  - Traffic routing switched to green (immediate or gradual)
+  - Blue service traffic reduced/stopped
+  - Traffic switch confirmation
+  - Traffic shift monitoring (if gradual)
+- **Option B - CodeDeploy Traffic Switch**:
+  - CodeDeploy automatically manages traffic shifting
+  - Traffic shifted gradually (configurable percentage increments)
+  - CodeDeploy monitors deployment health
+  - Automatic rollback if health checks fail during traffic shift
+  - Traffic switch progress tracked in CodeDeploy console
 
 **Stage 7 - Green Service Monitoring**:
 - Green service metrics
@@ -1175,6 +1207,9 @@
 - New ECR image tag
 - Change log review
 - Risk assessment
+- Blue/green deployment method selection:
+  - **Option A**: Manual blue/green (Operations manages)
+  - **Option B**: CodeDeploy blue/green (AWS-native automated)
 
 **Stage 2 - Rolling Deployment Configuration**:
 - Deployment configuration (JSON format uses camelCase):
@@ -1262,6 +1297,9 @@
 - New ECR image tag
 - Change log review
 - Risk assessment
+- Blue/green deployment method selection:
+  - **Option A**: Manual blue/green (Operations manages)
+  - **Option B**: CodeDeploy blue/green (AWS-native automated)
 - Canary strategy defined
 
 **Stage 2 - Canary Service Creation**:
@@ -1696,6 +1734,231 @@
 
 ---
 
+## Use Case 19: Multi-Container Task Definition Deployment
+
+```
+┌─────────────┐
+│ Development │
+└──────┬──────┘
+       │ 1. Defines multi-container task definition
+       │    (main container + sidecars)
+       │ 2. Commits task definition code
+       │ 3. Pushes to GitHub
+       ▼
+┌─────────────┐
+│   CI/CD     │
+└──────┬──────┘
+       │ 4. Builds all container images
+       │ 5. Scans all images
+       │ 6. Pushes all images to ECR
+       │ 7. Registers multi-container task definition
+       │ 8. Deploys to Dev
+       ▼
+┌─────────────┐
+│ Operations  │
+└──────┬──────┘
+       │ 9. Validates multi-container deployment
+       │ 10. Monitors all containers
+       │ 11. Approves production
+       ▼
+┌─────────────┐
+│   CI/CD     │
+└──────┬──────┘
+       │ 12. Deploys to Production
+       │ 13. Validates all containers healthy
+```
+
+**Responsibilities**:
+- **Development**: Defines multi-container task definition, builds images
+- **CI/CD**: Builds, scans, pushes all images, registers task definition, deploys
+- **Operations**: Validates, monitors, approves
+- **Infrastructure**: (Infrastructure already exists)
+
+**Common Multi-Container Patterns**:
+- **Sidecar Pattern**: Main application + logging sidecar (Fluent Bit), monitoring sidecar (X-Ray daemon)
+- **Init Containers**: Setup/initialization container + main application container
+- **Service Dependencies**: Multiple related services in same task (e.g., web server + cache)
+
+**Artifacts by Stage**:
+
+**Stage 1 - Multi-Container Task Definition**:
+- Task definition JSON/YAML with multiple container definitions
+- Main application container:
+  - Image: `account-id.dkr.ecr.region.amazonaws.com/app:tag`
+  - Essential: `true` (required for task to run)
+  - Port mappings
+  - Environment variables
+  - Health checks
+- Sidecar containers (e.g., logging, monitoring):
+  - Image: `account-id.dkr.ecr.region.amazonaws.com/fluent-bit:tag`
+  - Essential: `false` (task can run if sidecar fails)
+  - Logging configuration
+  - Shared volumes (if needed)
+- Container dependencies:
+  - `dependsOn`: Container startup order
+  - Example: `[{ "containerName": "app", "condition": "START" }]`
+- Shared volumes (if containers need shared storage):
+  - Volume name and mount points
+  - Volume type (bind mount, tmpfs, etc.)
+
+**Stage 2-3 - Code Commit**:
+- Task definition files (Git)
+- Dockerfiles for all containers (Git)
+- buildspec.yaml (Git)
+- Git commit SHA
+- Code review completed
+
+**Stage 4 - Image Build**:
+- All container images built:
+  - Main application image
+  - Sidecar images (Fluent Bit, X-Ray daemon, etc.)
+- Images tagged with same commit SHA for traceability
+- Build logs for all images
+- CodeBuild build ID
+
+**Stage 5 - Image Scan**:
+- All images scanned (ECR + Rapid7 if configured)
+- Scan results for each image
+- Vulnerability reports
+- Scan status (pass/fail) - all must pass
+
+**Stage 6 - ECR Push**:
+- All images pushed to respective ECR repositories:
+  - Main app: `account-id.dkr.ecr.region.amazonaws.com/app:tag`
+  - Sidecars: `account-id.dkr.ecr.region.amazonaws.com/fluent-bit:tag`, etc.
+- Image digests for all images
+- ECR push logs
+
+**Stage 7 - Task Definition Registration**:
+- Multi-container task definition registered:
+  - Task definition ARN: `arn:aws:ecs:region:account:task-definition/family:revision`
+  - All container definitions included
+  - Container dependencies configured
+  - Shared volumes configured (if applicable)
+  - Resource allocation (CPU, memory) for entire task
+- Task definition validation:
+  - All container images exist in ECR
+  - Container dependencies valid
+  - Resource allocation sufficient
+
+**Stage 8 - Dev Deployment**:
+- ECS service updated with multi-container task definition
+- Service deployment ID
+- All containers start:
+  - Init containers (if any) start first
+  - Main container starts
+  - Sidecar containers start (based on dependencies)
+- Container startup logs for all containers
+- Health checks for essential containers
+- Deployment time metrics
+
+**Stage 9 - Multi-Container Validation**:
+- All containers running and healthy
+- Container dependencies validated (startup order)
+- Shared volumes accessible (if configured)
+- Inter-container communication validated (if applicable)
+- Sidecar functionality validated (logging, monitoring working)
+
+**Stage 10 - Container Monitoring**:
+- All containers monitored:
+  - Main application container metrics
+  - Sidecar container metrics
+  - Container health status
+  - Resource usage per container
+- Container Insights shows all containers
+- Log aggregation from all containers working
+
+**Stage 11 - Production Approval**:
+- Manual approval action in pipeline
+- Approval timestamp
+- Approver identity
+- Multi-container deployment validated
+
+**Stage 12 - Production Deployment**:
+- ECS service updated in production
+- Multi-container task definition deployed
+- All containers start in production
+- Deployment circuit breaker monitors all containers
+- Service deployment ID
+
+**Stage 13 - Production Validation**:
+- All containers healthy in production
+- Main application functional
+- Sidecar containers operational (logging, monitoring)
+- Container dependencies working
+- Shared volumes accessible (if configured)
+- Inter-container communication validated
+
+**Common Multi-Container Examples**:
+
+**Example 1: Application + Logging Sidecar**:
+```json
+{
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "account.dkr.ecr.region.amazonaws.com/app:tag",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "fluentd",
+        "options": {
+          "fluentd-address": "localhost:24224"
+        }
+      }
+    },
+    {
+      "name": "fluent-bit",
+      "image": "public.ecr.aws/aws-observability/aws-for-fluent-bit:stable",
+      "essential": false,
+      "dependsOn": [{"containerName": "app", "condition": "START"}]
+    }
+  ]
+}
+```
+
+**Example 2: Application + X-Ray Sidecar**:
+```json
+{
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "account.dkr.ecr.region.amazonaws.com/app:tag",
+      "essential": true,
+      "environment": [
+        {"name": "_X_AMZN_TRACE_ID", "value": ""}
+      ]
+    },
+    {
+      "name": "xray-daemon",
+      "image": "amazon/aws-xray-daemon:latest",
+      "essential": false,
+      "portMappings": [{"containerPort": 2000, "protocol": "udp"}]
+    }
+  ]
+}
+```
+
+**Example 3: Init Container + Main Container**:
+```json
+{
+  "containerDefinitions": [
+    {
+      "name": "init-setup",
+      "image": "account.dkr.ecr.region.amazonaws.com/init:tag",
+      "essential": false
+    },
+    {
+      "name": "app",
+      "image": "account.dkr.ecr.region.amazonaws.com/app:tag",
+      "essential": true,
+      "dependsOn": [{"containerName": "init-setup", "condition": "SUCCESS"}]
+    }
+  ]
+}
+```
+
+---
+
 ## Responsibility Summary
 
 ### Development Team
@@ -1816,6 +2079,8 @@ Start Deployment
 | **Multi-Region Setup** | - | ⚙️ Deploy | ✅ Plan | ✅ Provision |
 | **Enable Container Insights** | - | - | ⚙️ Validate | ✅ Provision |
 | **ECS Exec Debugging** | - | - | ✅ Execute | ⚙️ Configure |
+| **Multi-Container Deploy** | ⚙️ Define | ✅ Build/Deploy | ⚙️ Validate | - |
+| **CodeDeploy Blue/Green** | - | ⚙️ Configure | ✅ Execute | - |
 
 **Legend**:
 - ✅ = Primary responsibility
@@ -1870,6 +2135,7 @@ Start Deployment
 
 ## Document Version History
 
+- **v2.3 (Enhanced)**: Added multi-container task definition use case, CodeDeploy blue/green integration, health check failure handling, automated pipeline rollback
 - **v2.2 (Validated)**: Fixed deployment circuit breaker configuration, corrected AWS CLI commands, clarified Container Insights as cluster setting, added JSON format clarifications
 - **v2.1 (Enhanced)**: Added Container Insights, Deployment Circuit Breaker, ECS Exec debugging, enhanced health check configurations
 - **v2.0 (Augmented)**: Enhanced with ECR deep integration, additional use cases (rolling, canary, batch jobs, auto-scaling, multi-region), improved artifacts, and best practices alignment

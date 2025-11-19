@@ -1,0 +1,49 @@
+---
+# Use Case 8: Rollback - Ansible Playbook
+
+- name: Rollback ECS Service
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    previous_task_definition_revision: "{{ previous_task_definition_revision }}"
+
+  tasks:
+    - name: Get Current Task Definition
+      community.aws.ecs_service:
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        region: "{{ aws_region }}"
+      register: current_service
+
+    - name: Rollback to Previous Task Definition
+      community.aws.ecs_service:
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        task_definition: "{{ previous_task_definition_revision }}"
+        region: "{{ aws_region }}"
+      register: rollback_service
+
+    - name: Wait for Rollback to Complete
+      community.aws.ecs_service:
+        name: "{{ service_name }}"
+        cluster: "{{ cluster_name }}"
+        region: "{{ aws_region }}"
+      register: service_status
+      until: service_status.service.runningCount == service_status.service.desiredCount
+      retries: 30
+      delay: 10
+
+    - name: Display Rollback Info
+      debug:
+        msg:
+          - "Rollback completed"
+          - "Service: {{ service_name }}"
+          - "Previous Task Definition: {{ previous_task_definition_revision }}"
+          - "Current Running Count: {{ service_status.service.runningCount }}"
+          - "Desired Count: {{ service_status.service.desiredCount }}"
+

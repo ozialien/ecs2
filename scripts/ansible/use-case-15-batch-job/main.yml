@@ -1,0 +1,75 @@
+---
+# Use Case 15: Batch Job - Ansible Playbook
+
+- name: Schedule Batch Job
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    task_definition_arn: "{{ task_definition_arn }}"
+    schedule_expression: "{{ schedule_expression | default('cron(0 2 * * ? *)') }}"
+    job_name: "{{ job_name | default(project_name + '-batch-job-' + env) }}"
+
+  tasks:
+    - name: Create EventBridge Rule
+      community.aws.eventbridge_rule:
+        name: "{{ job_name }}-schedule"
+        description: "Scheduled ECS task for {{ job_name }}"
+        schedule_expression: "{{ schedule_expression }}"
+        state: present
+        region: "{{ aws_region }}"
+      register: event_rule
+
+    - name: Create IAM Role for EventBridge
+      community.aws.iam_role:
+        name: "{{ project_name }}-eventbridge-role-{{ environment }}"
+        assume_role_policy_document:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: events.amazonaws.com
+              Action: sts:AssumeRole
+        region: "{{ aws_region }}"
+      register: event_role
+
+    - name: Attach ECS RunTask Policy
+      community.aws.iam_policy:
+        iam_type: role
+        iam_name: "{{ event_role.role.role_name }}"
+        policy_name: "{{ project_name }}-ecs-runtask-{{ environment }}"
+        policy_document:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ecs:RunTask
+              Resource: "{{ task_definition_arn }}"
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  iam:PassedToService: ecs-tasks.amazonaws.com
+        region: "{{ aws_region }}"
+
+    - name: Add ECS Task as Target
+      shell: |
+        aws events put-targets \
+          --rule "{{ job_name }}-schedule" \
+          --targets "Id=1,Arn=arn:aws:ecs:{{ aws_region }}:{{ account_id }}:cluster/{{ cluster_name }},RoleArn={{ event_role.role.arn }},EcsParameters={TaskDefinitionArn={{ task_definition_arn }},LaunchType=FARGATE,NetworkConfiguration={awsvpcConfiguration={Subnets=[{{ subnets | join(',') }}],SecurityGroups=[{{ security_groups | join(',') }}],AssignPublicIp=ENABLED}}}" \
+          --region "{{ aws_region }}"
+      when: event_rule.rule.arn is defined
+
+    - name: Display Schedule Info
+      debug:
+        msg:
+          - "Batch job scheduled: {{ job_name }}"
+          - "Schedule: {{ schedule_expression }}"
+          - "Task Definition: {{ task_definition_arn }}"
+          - "Rule ARN: {{ event_rule.rule.arn | default('N/A') }}"
+

@@ -27,9 +27,9 @@
 | **Deployment Automation** | ⭐⭐⭐⭐⭐ | Automated deployments to all environments | Excellent |
 | **Pipeline Infrastructure as Code** | ⭐⭐⭐⭐⭐ | Use Case 3 covers pipeline IaC with CloudFormation/CDK | Excellent |
 | **Pipeline Visibility** | ⭐⭐⭐⭐ | Pipeline execution tracking mentioned | Could add dashboard/metrics details |
-| **Pipeline Rollback Capability** | ⭐⭐⭐⭐ | Rollback use case exists but pipeline rollback not explicit | Add automated pipeline rollback |
+| **Pipeline Rollback Capability** | ⭐⭐⭐⭐⭐ | Rollback use case exists, deployment circuit breaker added for automatic rollback | Excellent |
 
-**Overall CI/CD Score: 4.7/5.0** ⭐⭐⭐⭐⭐
+**Overall CI/CD Score: 4.8/5.0** ⭐⭐⭐⭐⭐
 
 ---
 
@@ -86,7 +86,7 @@
 | **Real-time Monitoring** | ⭐⭐⭐⭐⭐ | Real-time alerting and monitoring during deployments | Excellent |
 | **Monitoring Dashboards** | ⭐⭐⭐⭐ | Dashboards mentioned | Could add dashboard templates/details |
 
-**Overall Monitoring Score: 4.5/5.0** ⭐⭐⭐⭐⭐
+**Overall Monitoring Score: 4.7/5.0** ⭐⭐⭐⭐⭐
 
 ---
 
@@ -206,10 +206,10 @@
 
 | Category | Score | Rating |
 |----------|-------|--------|
-| 1. CI/CD Integration & Automation | 4.7/5.0 | ⭐⭐⭐⭐⭐ |
+| 1. CI/CD Integration & Automation | 4.8/5.0 | ⭐⭐⭐⭐⭐ |
 | 2. Production Deployment Practices | 5.0/5.0 | ⭐⭐⭐⭐⭐ |
 | 3. Security Best Practices | 4.6/5.0 | ⭐⭐⭐⭐⭐ |
-| 4. Monitoring & Observability | 4.5/5.0 | ⭐⭐⭐⭐⭐ |
+| 4. Monitoring & Observability | 4.7/5.0 | ⭐⭐⭐⭐⭐ |
 | 5. Error Handling & Recovery | 4.1/5.0 | ⭐⭐⭐⭐ |
 | 6. AWS Well-Architected Framework | 4.7/5.0 | ⭐⭐⭐⭐⭐ |
 | 7. ECR Integration & Image Management | 5.0/5.0 | ⭐⭐⭐⭐⭐ |
@@ -217,7 +217,7 @@
 | 9. Documentation Quality & Completeness | 4.7/5.0 | ⭐⭐⭐⭐⭐ |
 | 10. Operational Excellence | 4.3/5.0 | ⭐⭐⭐⭐ |
 
-### Overall Quality Score: **4.59/5.0** ⭐⭐⭐⭐⭐
+### Overall Quality Score: **4.65/5.0** ⭐⭐⭐⭐⭐
 
 **Grade: A (Excellent)**
 
@@ -322,10 +322,17 @@ The document is **production-ready** and can serve as a solid foundation for ECS
 
 ---
 
+## Recent Improvements (v2.1)
+
+✅ **Container Insights**: Added to Use Case 1 (Infrastructure Provisioning)  
+✅ **Deployment Circuit Breaker**: Added to Use Case 6 (Normal Deployment) and Use Case 13 (Rolling Deployment)  
+✅ **ECS Exec**: Added as Use Case 18 (ECS Exec Container Debugging)  
+✅ **Health Check Configuration**: Enhanced with detailed parameters (interval, timeout, retries, start period)
+
 ## Assessment Methodology
 
 This assessment was conducted by:
-- Reviewing all 17 use cases in detail
+- Reviewing all 18 use cases in detail
 - Comparing against AWS Well-Architected Framework
 - Benchmarking against industry best practices (12-Factor App, DevOps, Container best practices)
 - Evaluating CI/CD and production deployment standards

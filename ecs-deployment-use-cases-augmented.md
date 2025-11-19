@@ -31,18 +31,20 @@
        │ 5. Creates IAM roles
        │    (task execution, task role)
        │ 6. Configures CloudWatch Logs
-       │ 7. Sets up service discovery
-       │ 8. Provisions load balancer
-       │ 9. Configures capacity providers
-       │ 10. Sets up auto-scaling policies
+       │ 7. Enables Container Insights
+       │ 8. Sets up service discovery
+       │ 9. Provisions load balancer
+       │ 10. Configures capacity providers
+       │ 11. Sets up auto-scaling policies
        ▼
 ┌─────────────┐
 │ Operations  │
 └──────┬──────┘
-       │ 11. Validates infrastructure
-       │ 12. Tests connectivity
-       │ 13. Configures monitoring
-       │ 14. Validates high availability
+       │ 12. Validates infrastructure
+       │ 13. Tests connectivity
+       │ 14. Configures monitoring
+       │ 15. Validates high availability
+       │ 16. Validates Container Insights
 ```
 
 **Responsibilities**:
@@ -104,14 +106,23 @@
 - Log group tags
 - Log subscription filters (for log aggregation/analysis)
 
-**Stage 7 - Service Discovery**:
+**Stage 7 - Container Insights**:
+- CloudFormation/CDK: `container-insights.yaml` / `container-insights.ts`
+- Container Insights enabled on cluster
+- CloudWatch Logs group for Container Insights: `/aws/ecs/containerinsights/cluster-name/performance`
+- Container Insights metrics namespace: `ECS/ContainerInsights`
+- Performance metrics collection enabled
+- Container Insights dashboard configuration
+- IAM permissions for Container Insights (CloudWatch Logs, CloudWatch Metrics)
+
+**Stage 8 - Service Discovery**:
 - CloudFormation/CDK: `service-discovery.yaml` / `service-discovery.ts`
 - Cloud Map namespace ID
 - Service discovery configuration
 - DNS namespace configuration
 - Service discovery health checks
 
-**Stage 8 - Load Balancer**:
+**Stage 9 - Load Balancer**:
 - CloudFormation/CDK: `load-balancer.yaml` / `load-balancer.ts`
 - Load Balancer ARN: `arn:aws:elasticloadbalancing:region:account:loadbalancer/...`
 - Target Group ARN: `arn:aws:elasticloadbalancing:region:account:targetgroup/...`
@@ -121,7 +132,7 @@
 - Sticky session configuration (if needed)
 - WAF integration (if applicable)
 
-**Stage 9 - Capacity Providers**:
+**Stage 10 - Capacity Providers**:
 - CloudFormation/CDK: `capacity-providers.yaml` / `capacity-providers.ts`
 - Capacity provider configuration
 - Auto Scaling group (if EC2 launch type)
@@ -129,7 +140,7 @@
 - Spot capacity provider (if using Spot instances)
 - Capacity provider strategy (Fargate, EC2, Spot mix)
 
-**Stage 10 - Auto-Scaling Policies**:
+**Stage 11 - Auto-Scaling Policies**:
 - CloudFormation/CDK: `auto-scaling.yaml` / `auto-scaling.ts`
 - Target tracking scaling policies
 - Step scaling policies
@@ -137,21 +148,21 @@
 - CloudWatch alarms for scaling triggers
 - Scaling cooldown periods
 
-**Stage 11 - Infrastructure Validation**:
+**Stage 12 - Infrastructure Validation**:
 - Validation script/test results
 - Infrastructure validation report
 - Connectivity test results
 - Multi-AZ validation
 - High availability validation
 
-**Stage 12 - Connectivity Testing**:
+**Stage 13 - Connectivity Testing**:
 - Network connectivity test results
 - Security group test results
 - Load balancer health check results
 - ECR connectivity test (from private subnets)
 - Service discovery DNS resolution tests
 
-**Stage 13 - Monitoring Configuration**:
+**Stage 14 - Monitoring Configuration**:
 - CloudWatch dashboard configuration
 - CloudWatch alarms configuration
 - Monitoring runbook
@@ -159,11 +170,18 @@
 - X-Ray tracing configuration (if applicable)
 - Custom metrics configuration
 
-**Stage 14 - High Availability Validation**:
+**Stage 15 - High Availability Validation**:
 - Multi-AZ task distribution validation
 - Load balancer multi-AZ validation
 - Failover testing results
 - Disaster recovery readiness assessment
+
+**Stage 16 - Container Insights Validation**:
+- Container Insights metrics collection verified
+- Container Insights dashboard accessible
+- Performance metrics visible (CPU, memory, network)
+- Log group for Container Insights created
+- IAM permissions validated
 
 ---
 
@@ -554,6 +572,12 @@
 - Registered task definition in ECS
 - Task definition validation
 - Resource requirements validated (CPU, memory)
+- Health check configuration:
+  - Command: Health check command or HTTP endpoint
+  - Interval: 30 seconds (default, configurable)
+  - Timeout: 5 seconds (default, configurable)
+  - Retries: 3 (default, configurable)
+  - Start period: 0-300 seconds (grace period for container startup)
 
 **Stage 11 - Dev Deployment**:
 - ECS service updated in dev
@@ -611,6 +635,10 @@
 - Service ARN
 - imagedefinitions.json
 - Production deployment configuration
+- Deployment circuit breaker enabled:
+  - Enable: `true`
+  - Rollback: `true` (automatic rollback on deployment failure)
+  - Failure threshold: Number of failed tasks before rollback (e.g., 5)
 - Blue/green or rolling deployment strategy applied
 
 **Stage 19 - Deployment Validation**:
@@ -1146,6 +1174,10 @@
 - Deployment configuration:
   - maximumPercent: 200% (allows 2x tasks during deployment)
   - minimumHealthyPercent: 50% (maintains 50% capacity)
+- Deployment circuit breaker enabled:
+  - Enable: `true`
+  - Rollback: `true` (automatic rollback on deployment failure)
+  - Failure threshold: Number of failed tasks before rollback (e.g., 5)
 - Task replacement strategy
 - Health check grace period
 - Deployment timeout
@@ -1574,6 +1606,89 @@
 
 ---
 
+## Use Case 18: ECS Exec Container Debugging
+
+```
+┌─────────────┐
+│ Operations  │
+└──────┬──────┘
+       │ 1. Identifies container issue
+       │ 2. Enables ECS Exec on service
+       │ 3. Connects to running container
+       │ 4. Debugs issue
+       │ 5. Documents findings
+       │ 6. Disables ECS Exec (if temporary)
+```
+
+**Responsibilities**:
+- **Operations**: Enables ECS Exec, connects to containers, debugs issues
+- **Development**: (May assist with debugging)
+- **Infrastructure**: (Ensures ECS Exec prerequisites are met)
+- **CI/CD**: (Not involved)
+
+**Prerequisites**:
+- ECS Exec requires:
+  - ECS platform version 1.4.0 or later
+  - Task execution role with `ssmmessages:CreateControlChannel`, `ssmmessages:CreateDataChannel`, `ssmmessages:OpenControlChannel`, `ssmmessages:OpenDataChannel` permissions
+  - AWS Systems Manager Agent (SSM Agent) in container image (for EC2 launch type)
+  - Fargate tasks automatically include SSM Agent
+
+**Artifacts by Stage**:
+
+**Stage 1 - Issue Identification**:
+- Container issue identified
+- Task ARN: `arn:aws:ecs:region:account:task/cluster/task-id`
+- Container name
+- Issue description
+- Logs reviewed (insufficient for debugging)
+
+**Stage 2 - ECS Exec Enablement**:
+- ECS Exec enabled on service (if not already enabled):
+  - `aws ecs update-service --enable-execute-command --service service-name --cluster cluster-name`
+- Service update confirmation
+- ECS Exec configuration:
+  - EnableExecuteCommand: `true`
+  - Task execution role updated with SSM permissions (if needed)
+- Service ARN: `arn:aws:ecs:region:account:service/cluster/service`
+
+**Stage 3 - Container Connection**:
+- AWS CLI command: `aws ecs execute-command --cluster cluster-name --task task-id --container container-name --interactive --command "/bin/sh"`
+- ECS Exec session established
+- Interactive shell access to container
+- Connection confirmation
+
+**Stage 4 - Issue Debugging**:
+- Container filesystem inspection
+- Process inspection (`ps`, `top`)
+- Network connectivity testing
+- Environment variables inspection
+- Application logs review (inside container)
+- Configuration file inspection
+- Debugging session logs
+- Issue root cause identified
+
+**Stage 5 - Documentation**:
+- Debugging session notes
+- Issue root cause documented
+- Resolution steps documented
+- Prevention measures identified
+- ECS Exec usage logged (for audit)
+
+**Stage 6 - ECS Exec Disablement (Optional)**:
+- ECS Exec disabled on service (if temporary enablement):
+  - `aws ecs update-service --no-enable-execute-command --service service-name --cluster cluster-name`
+- Service update confirmation
+- Security note: ECS Exec should be enabled only when needed for production services
+
+**Security Considerations**:
+- ECS Exec sessions are logged in CloudTrail
+- Access can be restricted via IAM policies
+- ECS Exec should be disabled when not needed (security best practice)
+- Use least privilege IAM roles for ECS Exec access
+- Audit ECS Exec usage regularly
+
+---
+
 ## Responsibility Summary
 
 ### Development Team
@@ -1692,6 +1807,8 @@ Start Deployment
 | **Setup ECR** | ⚙️ Request | - | - | ✅ |
 | **Setup Scanning** | - | - | ⚙️ Configure | ✅ Provision |
 | **Multi-Region Setup** | - | ⚙️ Deploy | ✅ Plan | ✅ Provision |
+| **Enable Container Insights** | - | - | ⚙️ Validate | ✅ Provision |
+| **ECS Exec Debugging** | - | - | ✅ Execute | ⚙️ Configure |
 
 **Legend**:
 - ✅ = Primary responsibility
@@ -1746,6 +1863,7 @@ Start Deployment
 
 ## Document Version History
 
+- **v2.1 (Enhanced)**: Added Container Insights, Deployment Circuit Breaker, ECS Exec debugging, enhanced health check configurations
 - **v2.0 (Augmented)**: Enhanced with ECR deep integration, additional use cases (rolling, canary, batch jobs, auto-scaling, multi-region), improved artifacts, and best practices alignment
 - **v1.0 (Original)**: Initial comprehensive use cases document
 

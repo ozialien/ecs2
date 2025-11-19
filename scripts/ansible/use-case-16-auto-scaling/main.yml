@@ -1,0 +1,67 @@
+---
+# Use Case 16: Auto-Scaling - Ansible Playbook
+
+- name: Configure Auto-Scaling
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    cluster_name: "{{ cluster_name }}"
+    service_name: "{{ service_name }}"
+    min_capacity: "{{ min_capacity | default(1) }}"
+    max_capacity: "{{ max_capacity | default(10) }}"
+    target_cpu_utilization: "{{ target_cpu_utilization | default(70) }}"
+    target_memory_utilization: "{{ target_memory_utilization | default(80) }}"
+
+  tasks:
+    - name: Register Scalable Target
+      community.aws.application_autoscaling_target:
+        service_namespace: ecs
+        scalable_dimension: ecs:service:DesiredCount
+        resource_id: "service/{{ cluster_name }}/{{ service_name }}"
+        min_capacity: "{{ min_capacity }}"
+        max_capacity: "{{ max_capacity }}"
+        region: "{{ aws_region }}"
+      register: scalable_target
+
+    - name: Create CPU Scaling Policy
+      community.aws.application_autoscaling_policy:
+        service_namespace: ecs
+        scalable_dimension: ecs:service:DesiredCount
+        resource_id: "service/{{ cluster_name }}/{{ service_name }}"
+        policy_name: "{{ project_name }}-cpu-scaling-{{ environment }}"
+        policy_type: TargetTrackingScaling
+        target_tracking_scaling_policy_config:
+          target_value: "{{ target_cpu_utilization }}"
+          scale_in_cooldown: 300
+          scale_out_cooldown: 60
+          predefined_metric_specification:
+            predefined_metric_type: ECSServiceAverageCPUUtilization
+        region: "{{ aws_region }}"
+
+    - name: Create Memory Scaling Policy
+      community.aws.application_autoscaling_policy:
+        service_namespace: ecs
+        scalable_dimension: ecs:service:DesiredCount
+        resource_id: "service/{{ cluster_name }}/{{ service_name }}"
+        policy_name: "{{ project_name }}-memory-scaling-{{ environment }}"
+        policy_type: TargetTrackingScaling
+        target_tracking_scaling_policy_config:
+          target_value: "{{ target_memory_utilization }}"
+          scale_in_cooldown: 300
+          scale_out_cooldown: 60
+          predefined_metric_specification:
+            predefined_metric_type: ECSServiceAverageMemoryUtilization
+        region: "{{ aws_region }}"
+
+    - name: Display Auto-Scaling Info
+      debug:
+        msg:
+          - "Auto-scaling configured"
+          - "Min Capacity: {{ min_capacity }}"
+          - "Max Capacity: {{ max_capacity }}"
+          - "Target CPU: {{ target_cpu_utilization }}%"
+          - "Target Memory: {{ target_memory_utilization }}%"
+

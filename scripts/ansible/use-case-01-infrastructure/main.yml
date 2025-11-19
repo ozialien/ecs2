@@ -1,0 +1,264 @@
+---
+# Use Case 1: Infrastructure Provisioning - Ansible Playbook
+# Idempotent - can be run multiple times without clashes
+
+- name: Provision ECS Infrastructure
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    unique_id: "{{ unique_id | default(ansible_date_time.epoch) }}"
+    stack_name: "{{ project_name }}-01-infrastructure-{{ environment }}-{{ unique_id }}"
+    vpc_cidr: "{{ vpc_cidr | default('10.0.0.0/16') }}"
+    cluster_name: "{{ project_name }}-cluster-{{ environment }}"
+    enable_container_insights: "{{ enable_container_insights | default(true) }}"
+    enable_load_balancer: "{{ enable_load_balancer | default(true) }}"
+    load_balancer_type: "{{ load_balancer_type | default('application') }}"
+    enable_service_discovery: "{{ enable_service_discovery | default(false) }}"
+    service_discovery_namespace: "{{ service_discovery_namespace | default(project_name + '.local') }}"
+
+  tasks:
+    - name: Get AWS Account ID
+      aws_caller_info:
+      register: aws_account_info
+
+    - name: Set account_id fact
+      set_fact:
+        account_id: "{{ aws_account_info.account }}"
+
+    # ============================================
+    # VPC and Networking
+    # ============================================
+    - name: Create VPC
+      ec2_vpc_net:
+        name: "{{ project_name }}-vpc-{{ environment }}"
+        cidr_block: "{{ vpc_cidr }}"
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+          ManagedBy: Ansible
+      register: vpc_result
+
+    - name: Create Public Subnets
+      ec2_vpc_subnet:
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        cidr: "{{ item.cidr }}"
+        az: "{{ item.az }}"
+        region: "{{ aws_region }}"
+        tags:
+          Name: "{{ project_name }}-public-subnet-{{ item.az }}-{{ environment }}"
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+          Type: Public
+      loop:
+        - { cidr: "10.0.1.0/24", az: "{{ aws_region }}a" }
+        - { cidr: "10.0.2.0/24", az: "{{ aws_region }}b" }
+        - { cidr: "10.0.3.0/24", az: "{{ aws_region }}c" }
+      register: public_subnets
+
+    - name: Create Private Subnets
+      ec2_vpc_subnet:
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        cidr: "{{ item.cidr }}"
+        az: "{{ item.az }}"
+        region: "{{ aws_region }}"
+        tags:
+          Name: "{{ project_name }}-private-subnet-{{ item.az }}-{{ environment }}"
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+          Type: Private
+      loop:
+        - { cidr: "10.0.11.0/24", az: "{{ aws_region }}a" }
+        - { cidr: "10.0.12.0/24", az: "{{ aws_region }}b" }
+        - { cidr: "10.0.13.0/24", az: "{{ aws_region }}c" }
+      register: private_subnets
+
+    - name: Create Internet Gateway
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ aws_region }}"
+        tags:
+          Name: "{{ project_name }}-igw-{{ environment }}"
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      register: igw_result
+
+    - name: Create NAT Gateways
+      ec2_vpc_nat_gateway:
+        subnet_id: "{{ item.id }}"
+        region: "{{ aws_region }}"
+        wait: yes
+        tags:
+          Name: "{{ project_name }}-nat-{{ item.availability_zone }}-{{ environment }}"
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      loop: "{{ public_subnets.subnets }}"
+      when: enable_nat_gateway | default(true)
+      register: nat_gateways
+
+    # ============================================
+    # Security Groups
+    # ============================================
+    - name: Create ALB Security Group
+      ec2_group:
+        name: "{{ project_name }}-alb-sg-{{ environment }}"
+        description: Security group for Application Load Balancer
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            ports:
+              - 80
+              - 443
+            cidr_ip: "0.0.0.0/0"
+        rules_egress:
+          - proto: all
+            cidr_ip: "0.0.0.0/0"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      register: alb_sg
+
+    - name: Create ECS Security Group
+      ec2_group:
+        name: "{{ project_name }}-ecs-sg-{{ environment }}"
+        description: Security group for ECS tasks
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ aws_region }}"
+        rules:
+          - proto: tcp
+            ports:
+              - 80
+            group_id: "{{ alb_sg.group_id }}"
+        rules_egress:
+          - proto: all
+            cidr_ip: "0.0.0.0/0"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      register: ecs_sg
+
+    # ============================================
+    # CloudWatch Logs
+    # ============================================
+    - name: Create ECS Log Group
+      community.aws.cloudwatch_log_group:
+        name: "/ecs/{{ cluster_name }}"
+        state: present
+        retention_in_days: 7
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+
+    - name: Create Container Insights Log Group
+      community.aws.cloudwatch_log_group:
+        name: "/aws/ecs/containerinsights/{{ cluster_name }}/performance"
+        state: present
+        retention_in_days: 7
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      when: enable_container_insights
+
+    # ============================================
+    # ECS Cluster
+    # ============================================
+    - name: Create ECS Cluster
+      community.aws.ecs_cluster:
+        name: "{{ cluster_name }}"
+        state: present
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      register: ecs_cluster
+
+    - name: Enable Container Insights
+      shell: |
+        aws ecs update-cluster-settings \
+          --cluster "{{ cluster_name }}" \
+          --settings name=containerInsights,value=enabled \
+          --region "{{ aws_region }}"
+      when: enable_container_insights
+      changed_when: false
+
+    # ============================================
+    # Service Discovery (Optional)
+    # ============================================
+    - name: Create Service Discovery Namespace
+      community.aws.service_discovery_service:
+        name: "{{ service_discovery_namespace }}"
+        namespace_type: DNS_PRIVATE
+        vpc: "{{ vpc_result.vpc.id }}"
+        region: "{{ aws_region }}"
+        state: present
+      when: enable_service_discovery
+      register: service_discovery
+
+    # ============================================
+    # Load Balancer (Optional)
+    # ============================================
+    - name: Create Application Load Balancer
+      elb_application_lb:
+        name: "{{ project_name }}-alb-{{ environment }}"
+        subnets: "{{ public_subnets.subnets | map(attribute='id') | list }}"
+        security_groups: "{{ [alb_sg.group_id] }}"
+        scheme: internet-facing
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      when: enable_load_balancer and load_balancer_type == 'application'
+      register: alb
+
+    - name: Create Target Group
+      elb_target_group:
+        name: "{{ project_name }}-tg-{{ environment }}"
+        protocol: http
+        port: 80
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        health_check_protocol: http
+        health_check_path: "/health"
+        health_check_interval: 30
+        health_check_timeout: 5
+        healthy_threshold_count: 2
+        unhealthy_threshold_count: 3
+        target_type: ip
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+      when: enable_load_balancer
+      register: target_group
+
+    - name: Create ALB Listener
+      elb_application_lb_listener:
+        load_balancer_arn: "{{ alb.load_balancer.load_balancer_arn }}"
+        protocol: http
+        port: 80
+        default_actions:
+          - type: forward
+            target_group_arn: "{{ target_group.target_group.target_group_arn }}"
+        region: "{{ aws_region }}"
+      when: enable_load_balancer and load_balancer_type == 'application' and alb is defined
+
+    # ============================================
+    # Outputs
+    # ============================================
+    - name: Display Stack Outputs
+      debug:
+        msg:
+          - "Stack Name: {{ stack_name }}"
+          - "VPC ID: {{ vpc_result.vpc.id }}"
+          - "Cluster Name: {{ cluster_name }}"
+          - "Cluster ARN: {{ ecs_cluster.cluster.clusterArn }}"
+          - "Task Execution Role: {{ project_name }}-ecs-task-execution-role-{{ environment }}"
+          - "Task Role: {{ project_name }}-ecs-task-role-{{ environment }}"
+          - "Load Balancer DNS: {{ alb.load_balancer.dns_name | default('N/A') }}"
+          - "Target Group ARN: {{ target_group.target_group.target_group_arn | default('N/A') }}"
+

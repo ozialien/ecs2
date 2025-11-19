@@ -1,0 +1,51 @@
+---
+# Use Case 5: Image Scan - Ansible Playbook
+
+- name: Scan ECR Image
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    ecr_repository_name: "{{ ecr_repository_name }}"
+    image_tag: "{{ image_tag | default('latest') }}"
+
+  tasks:
+    - name: Start Image Scan
+      shell: |
+        aws ecr start-image-scan \
+          --repository-name "{{ ecr_repository_name }}" \
+          --image-id imageTag="{{ image_tag }}" \
+          --region "{{ aws_region }}"
+      register: scan_result
+
+    - name: Wait for Scan to Complete
+      shell: |
+        aws ecr describe-image-scan-findings \
+          --repository-name "{{ ecr_repository_name }}" \
+          --image-id imageTag="{{ image_tag }}" \
+          --region "{{ aws_region }}" \
+          --query 'imageScanStatus.status' \
+          --output text
+      register: scan_status
+      until: scan_status.stdout == 'COMPLETE'
+      retries: 30
+      delay: 10
+
+    - name: Get Scan Findings
+      shell: |
+        aws ecr describe-image-scan-findings \
+          --repository-name "{{ ecr_repository_name }}" \
+          --image-id imageTag="{{ image_tag }}" \
+          --region "{{ aws_region }}"
+      register: scan_findings
+
+    - name: Display Scan Results
+      debug:
+        msg:
+          - "Scan Status: {{ scan_findings.imageScanFindings.imageScanStatus.status }}"
+          - "Findings: {{ scan_findings.imageScanFindings.findings | length }}"
+          - "Critical: {{ scan_findings.imageScanFindings.findings | selectattr('severity', 'equalto', 'CRITICAL') | list | length }}"
+          - "High: {{ scan_findings.imageScanFindings.findings | selectattr('severity', 'equalto', 'HIGH') | list | length }}"
+

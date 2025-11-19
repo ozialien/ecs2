@@ -1,0 +1,44 @@
+---
+# Use Case 4: Image Build - Ansible Playbook
+
+- name: Build Container Image
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    ecr_repository_uri: "{{ ecr_repository_uri }}"
+    dockerfile_path: "{{ dockerfile_path | default('Dockerfile') }}"
+    image_tag: "{{ image_tag | default('latest') }}"
+
+  tasks:
+    - name: Login to ECR
+      shell: |
+        aws ecr get-login-password --region {{ aws_region }} | docker login --username AWS --password-stdin {{ ecr_repository_uri }}
+      changed_when: false
+
+    - name: Build Docker Image
+      shell: |
+        docker build -t {{ ecr_repository_uri }}:{{ image_tag }} -f {{ dockerfile_path }} .
+      args:
+        chdir: "{{ source_directory | default('.') }}"
+      register: build_result
+
+    - name: Tag Image
+      shell: |
+        docker tag {{ ecr_repository_uri }}:{{ image_tag }} {{ ecr_repository_uri }}:latest
+      when: image_tag != 'latest'
+
+    - name: Push Image to ECR
+      shell: |
+        docker push {{ ecr_repository_uri }}:{{ image_tag }}
+        docker push {{ ecr_repository_uri }}:latest
+      register: push_result
+
+    - name: Display Build Info
+      debug:
+        msg:
+          - "Image built and pushed: {{ ecr_repository_uri }}:{{ image_tag }}"
+          - "Image digest: {{ push_result.stdout | regex_search('digest: (.*)', '\\1') | default('N/A') }}"
+

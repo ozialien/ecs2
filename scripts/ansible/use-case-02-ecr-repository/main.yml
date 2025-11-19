@@ -1,0 +1,39 @@
+---
+# Use Case 2: ECR Repository Setup - Ansible Playbook
+
+- name: Setup ECR Repository
+  hosts: localhost
+  gather_facts: false
+  vars:
+    project_name: "{{ project | default('myapp') }}"
+    environment: "{{ env | default('dev') }}"
+    aws_region: "{{ region | default('us-east-1') }}"
+    repository_name: "{{ project_name }}-{{ environment }}"
+    enable_scan_on_push: "{{ enable_scan_on_push | default(true) }}"
+    image_tag_mutability: "{{ image_tag_mutability | default('MUTABLE') }}"
+
+  tasks:
+    - name: Create ECR Repository
+      community.aws.ecr_repository:
+        name: "{{ repository_name }}"
+        scan_on_push: "{{ enable_scan_on_push }}"
+        image_tag_mutability: "{{ image_tag_mutability }}"
+        region: "{{ aws_region }}"
+        tags:
+          Project: "{{ project_name }}"
+          Environment: "{{ environment }}"
+          ManagedBy: Ansible
+      register: ecr_repo
+
+    - name: Set Lifecycle Policy
+      community.aws.ecr_lifecycle_policy:
+        name: "{{ repository_name }}"
+        policy: "{{ lookup('file', 'lifecycle-policy.json') }}"
+        region: "{{ aws_region }}"
+
+    - name: Display Repository Info
+      debug:
+        msg:
+          - "Repository URI: {{ ecr_repo.repository.repository_uri }}"
+          - "Repository ARN: {{ ecr_repo.repository.repository_arn }}"
+
